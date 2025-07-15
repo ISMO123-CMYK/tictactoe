@@ -49,6 +49,8 @@
     const roomId = prompt("Room ID (leave blank to create)") || Math.random().toString(36).substr(2,5);
     document.getElementById('roomInfo').innerText = `Arena: ${roomId}`;
 
+    let mySymbol = null;
+
     const boardEl = document.getElementById('board');
     const statusEl = document.getElementById('status');
     const msgsEl = document.getElementById('messages');
@@ -63,7 +65,7 @@
     socket.on('full', () => alert('That arena is full'));
 
     socket.on('playerAssigned', ({ symbol, avatar }) => {
-      socket.data.symbol = symbol;
+      mySymbol = symbol;
       document.getElementById('status').innerText = `You’re ${symbol}`;
       const img = document.createElement('img');
       img.src = avatar;
@@ -87,7 +89,7 @@
       renderHighlight(winner);
       statusEl.innerText = winner === 'draw'
         ? "🤝 Draw!"
-        : winner === socket.data.symbol
+        : winner === mySymbol
           ? "🎉 You Win!"
           : "😢 You Lose…";
       scoreXEl.className = streaks.X > 1 ? 'streak' : '';
@@ -114,9 +116,9 @@
       gameLogEl.innerHTML = '';
       board.forEach((c,i) => {
         const cell = document.createElement('div');
-        cell.className = 'cell' + (c || turn !== socket.data.symbol ? ' disabled' : '');
+        cell.className = 'cell' + (c || turn !== mySymbol ? ' disabled' : '');
         cell.innerText = c;
-        cell.onclick = () => !c && turn === socket.data.symbol && socket.emit('makeMove', i);
+        cell.onclick = () => !c && turn === mySymbol && socket.emit('makeMove', i);
         boardEl.appendChild(cell);
       });
     }
