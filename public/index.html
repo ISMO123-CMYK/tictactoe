@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Online Tic‑Tac‑Toe Arena</title>
+  <style>
+    body { margin:0; font-family:'Poppins', sans-serif; background:linear-gradient(135deg,#0f0c29,#302b63,#24243e); color:#f3f3f3; display:flex; height:100vh; overflow:hidden; }
+    #left,#right { padding:1.5rem; backdrop-filter:blur(20px); background:rgba(255,255,255,0.05); border-radius:12px; box-shadow:0 0 20px rgba(0,0,0,0.3); }
+    #left { flex:2; display:flex; flex-direction:column; align-items:center; }
+    #board { display:grid; grid-template:repeat(3,100px)/repeat(3,100px); gap:10px; }
+    .cell { background:rgba(255,255,255,0.08); border:2px solid #7c3aed; font-size:2.5rem; color:#22d3ee; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .3s ease; border-radius:12px; }
+    .cell.disabled { cursor:default; opacity:0.6; }
+    .cell.win { background:rgba(124,58,237,0.4); }
+    #status { font-size:1.2rem; margin:1rem; text-shadow:0 0 10px #22d3ee; animation:pulse 2s infinite; }
+    #chat { flex:1; overflow-y:auto; padding:0.5rem; }
+    #chat div { margin-bottom:.5rem; }
+    #chat input { width:70%; padding:.5rem; border-radius:5px; border:none; margin-right:5px; }
+    #chat button { padding:.5rem 1rem; background:#22d3ee; border:none; border-radius:5px; color:black; cursor:pointer; }
+    #leaderboard { margin-bottom:1rem; }
+    .streak { animation:glow 1.5s infinite alternate; }
+    @keyframes glow { 0% {text-shadow:0 0 10px gold;} 100% {text-shadow:0 0 20px white;} }
+    #game-log { max-height:150px; overflow-y:auto; margin-top:1rem; font-size:0.9rem; }
+    #roomInfo { margin-bottom:.5rem; font-size:.9rem; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.6;} }
+  </style>
+</head>
+<body>
+  <div id="left">
+    <div id="roomInfo"></div>
+    <div id="board"></div>
+    <div id="status"></div>
+    <div id="game-log"></div>
+  </div>
+  <div id="right">
+    <div id="leaderboard"><h3>🏆 Scores</h3>
+      <div id="scoreX">X: 0</div>
+      <div id="scoreO">O: 0</div>
+    </div>
+    <div id="chat"><h3>💬 Chat</h3><div id="messages"></div>
+      <input id="msgIn" placeholder="Type…"><button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const name = prompt("Enter your name") || 'Guest';
+    const roomId = prompt("Room ID (leave blank to create)") || Math.random().toString(36).substr(2,5);
+    document.getElementById('roomInfo').innerText = `Arena: ${roomId}`;
+
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const msgsEl = document.getElementById('messages');
+    const msgIn = document.getElementById('msgIn');
+    const sendBtn = document.getElementById('sendBtn');
+    const gameLogEl = document.getElementById('game-log');
+    const scoreXEl = document.getElementById('scoreX');
+    const scoreOEl = document.getElementById('scoreO');
+
+    socket.emit('joinRoom', { roomId, name });
+
+    socket.on('full', () => alert('That arena is full'));
+
+    socket.on('playerAssigned', ({ symbol, avatar }) => {
+      socket.data.symbol = symbol;
+      document.getElementById('status').innerText = `You’re ${symbol}`;
+      const img = document.createElement('img');
+      img.src = avatar;
+      img.width = 40; img.height = 40;
+      document.getElementById('status').prepend(img);
+    });
+
+    socket.on('roomData', ({ board, turn, scores, streaks }) => {
+      scoreXEl.innerText = `X: ${scores.X}`;
+      scoreOEl.innerText = `O: ${scores.O}`;
+      render(board, turn);
+    });
+
+    socket.on('moveMade', ({ board, turn, scores, streaks }) => {
+      scoreXEl.innerText = `X: ${scores.X}`;
+      scoreOEl.innerText = `O: ${scores.O}`;
+      render(board, turn);
+    });
+
+    socket.on('gameOver', ({ winner, scores, streaks }) => {
+      renderHighlight(winner);
+      statusEl.innerText = winner === 'draw'
+        ? "🤝 Draw!"
+        : winner === socket.data.symbol
+          ? "🎉 You Win!"
+          : "😢 You Lose…";
+      scoreXEl.className = streaks.X > 1 ? 'streak' : '';
+      scoreOEl.className = streaks.O > 1 ? 'streak' : '';
+      setTimeout(() => socket.emit('moveMade', null), 2000);
+    });
+
+    socket.on('chatMessage', ({ name, text }) => {
+      const div = document.createElement('div');
+      div.innerText = `${name}: ${text}`;
+      msgsEl.appendChild(div);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    });
+
+    sendBtn.onclick = () => {
+      if (msgIn.value.trim()) {
+        socket.emit('sendChat', msgIn.value.trim());
+        msgIn.value = '';
+      }
+    };
+
+    function render(board, turn) {
+      boardEl.innerHTML = '';
+      gameLogEl.innerHTML = '';
+      board.forEach((c,i) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (c || turn !== socket.data.symbol ? ' disabled' : '');
+        cell.innerText = c;
+        cell.onclick = () => !c && turn === socket.data.symbol && socket.emit('makeMove', i);
+        boardEl.appendChild(cell);
+      });
+    }
+
+    function renderHighlight(winner) {
+      const cells = boardEl.children;
+      const boardArr = Array.from(cells).map(c => c.innerText);
+      const wins = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+      ];
+      wins.forEach(([a,b,c]) => {
+        if (boardArr[a] && boardArr[a] === boardArr[b] && boardArr[a] === boardArr[c]) {
+          [a,b,c].forEach(i => cells[i].classList.add('win'));
+        }
+      });
+    }
+  </script>
+</body>
+</html>
